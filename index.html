@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html>
+
+<!--
+
+  Video candidates:
+
+
+
+
+-->
+
+<head>
+  <title>Welcome to Vue</title>
+  <script src="https://unpkg.com/vue"></script>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
+</head>
+
+<body>
+  <div id="app">
+    <!-- TODO: find poster / poster pr video ? -->
+    <video ref="videoRef" id="myVideo" preload="auto" :class="{ blur: isAtMark || isEnded }">
+      <source :src="videos[round].video" type="video/mp4 ">
+    </video>
+    <!-- put in component ? -->
+    <div id="overlay" v-if="isAtMark">
+      <div id="foo">Hvad sker der ?</div>
+      <ul v-html="choices" class="choices">
+      </ul>
+    </div>
+    <div id="overlay" v-if="isEnded">
+      <div class="team">
+        <div class="score">
+          <h1>{{teams[0].score}}</h1>
+        </div>
+        <div class="team-name">
+          <p>{{teams[0].name.toUpperCase()}}</p>
+        </div>
+      </div>
+      <div class="versus">VS</div>
+      <div class="team">
+        <div class="score">
+          <h1>{{teams[1].score}}</h1>
+        </div>
+        <div class="team-name">
+          <p>{{teams[1].name.toUpperCase()}}</p>
+        </div>
+      </div>
+      <div id="answer">
+        <i class="fa fa-check">&nbsp;</i>{{ answer }}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var app = new Vue({
+      el: '#app',
+      data: {
+        teams: [
+          {
+            name: "Hold A",
+            score: 0
+          },
+          {
+            name: "Hold B",
+            score: 0
+          }
+        ],
+        isAtMark: false,
+        isEnded: false,
+        videos: [{
+          video: 'rain.mp4',
+          mark: 100,
+          choices: ["Han skider i bukserne", "Bar", "Baz"],
+          answerPos: 0
+        }, {
+          video: 'westworld.mp4',
+          mark: 3000,
+          choices: ["Qux", "Qox", "Qix"],
+          answerPos: 1
+        }],
+        round: 0,
+        answerCount: 0
+      },
+      computed: {
+        choices: function () {
+          var choices = this.videos[this.round].choices;
+          let html = "";
+          for (let i = 0; i < this.answerCount; i++) {
+            html += `<li class="choice">${choices[i]}</li>`;
+          }
+          return html;
+        },
+        answer: function () {
+          return this.videos[this.round].choices[this.videos[this.round].answerPos];
+        }
+      },
+      methods: {
+        nextVideo: function () {
+          // TODO: make sure state is reset
+          if (this.round === this.videos.length - 1) {
+            console.log("No more videos! - Go to end screen ?");
+            return;
+          }
+          // Prepare state
+          this.round++;
+          this.resetVideo();
+
+          // Load next video
+          const video = this.videos[this.round];
+          const videoElement = document.getElementById('myVideo');
+          videoElement.src = video.video;
+        },
+        startWhatHappens: function () {
+          this.message = null;
+          this.isAtMark = false;
+        },
+        showWhatHappens: function () {
+          this.isEnded = true;
+        },
+        resetVideo: function () {
+          const videoElement = document.getElementById('myVideo');
+          videoElement.currentTime = 0;
+          videoElement.pause();
+          this.isAtMark = false;
+          this.isEnded = false;
+          this.answerCount = 0;
+        }
+      },
+      mounted() {
+        setupKeys();
+      }
+    })
+
+    /*
+    TODO
+    [] show one option at a time - animation
+    [] Brug David lyde (rigtig/forkert etc);
+    */
+
+    function handleVideo(videoElement, video) {
+      let currentTime = videoElement.currentTime;
+      if (video.mark >= (videoElement.duration * 1000)) {
+        console.error("Mark after video - What to do ?");
+        return;
+      }
+
+      let mark = video.mark;
+      if (currentTime === 0) {
+        let timer = setInterval(() => {
+          let currentTimeMs = videoElement.currentTime * 1000;
+          if (currentTimeMs >= mark) {
+            app.isAtMark = true;
+            clearInterval(timer);
+            videoElement.pause();
+          }
+          if (videoElement.ended) {
+            console.error("Mark is after video :( - validate beforehand ?");
+            clearInterval(timer);
+          }
+        }, 1);
+      }
+    }
+
+    function setupKeys() {
+      const videoElement = document.getElementById('myVideo');
+      document.body.onkeyup = e => {
+        const code = e.keyCode;
+        if (code === 32) {
+          // toggle video play/pause
+          if (videoElement.ended) {
+            console.error("Go to next video - Press <N> for next video");
+            return;
+          }
+          else if (app.isAtMark && app.videos[app.round].choices.length > app.answerCount) {
+            console.error("Wait for all answers to be shown - Press <ENTER>");
+          }
+          else if (!videoElement.paused) {
+            videoElement.pause();
+          } else {
+            if (app.isAtMark) {
+              app.startWhatHappens();
+              // TODO: Extract to method
+              let timer = setInterval(() => {
+                if (videoElement.ended) {
+                  app.showWhatHappens();
+                  clearInterval(timer);
+                }
+              }, 100);
+            } else {
+              // Run the video until it stops at specified mark
+              handleVideo(videoElement, app.videos[app.round]);
+            }
+            videoElement.play();
+          }
+        } else if (code === 82) {
+          // Restart video
+          app.resetVideo();
+          videoElement.currentTime = 0;
+          videoElement.pause();
+        } else if (code === 78) {
+          app.nextVideo();
+        } else if (code === 13) {
+          if (app.isAtMark) {
+            if (app.videos[app.round].choices.length > app.answerCount) {
+              app.answerCount++;
+            } else {
+              console.error("No more answers - Continue the video by pressing <SPACE>");
+            }
+          }
+        } else {
+          handleScoreKeyEvent(code);
+        }
+      };
+
+      function handleScoreKeyEvent(code) {
+        const videoElement = document.getElementById('myVideo');
+        if (app.isEnded || videoElement.ended) {
+          if (code === 81) {
+            app.teams[0].score++;
+          } else if (code === 65) {
+            if (app.teams[0].score != 0) {
+              app.teams[0].score--;
+            }
+          } else if (code === 69) {
+            app.teams[1].score++;
+          } else if (code === 68) {
+            if (app.teams[1].score != 0) {
+              app.teams[1].score--;
+            }
+          }
+        }
+      }
+    }
+
+
+  </script>
+
+  <style scoped>
+    @import url('https://fonts.googleapis.com/css?family=Open+Sans');
+    #myVideo {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      min-width: 100%;
+      min-height: 100%;
+    }
+
+    #overlay {
+      position: fixed;
+      color: #f1f1f1;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 50px;
+      border: 5px solid white;
+      border-radius: 30px;
+      box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+      display: flex;
+      justify-content: center;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      height: 500px;
+    }
+
+    div.versus {
+      color: lightgray;
+      font-size: 25px;
+      transform: translateY(38%);
+    }
+
+    div.team {
+      margin: -10px 40px 0px 40px;
+    }
+
+    div.score {
+      padding: 10px;
+    }
+
+    .score h1 {
+      font-size: 150px;
+      text-align: center;
+    }
+
+    .team-name {
+      font-weight: bold;
+      font-size: 20px;
+      text-align: center;
+      margin-top: -120px;
+    }
+
+    .choice {
+      padding: 15px;
+      font-size: 30px;
+      list-style: none;
+      margin-bottom: 12px;
+      top: 0;
+      transform: translateY(50%);
+      word-wrap: break-word;
+    }
+
+    li {
+      padding-left: 0.5em;
+    }
+
+    li:before {
+      content: "\f101";
+      /* FontAwesome Unicode */
+      font-family: FontAwesome;
+      display: inline-block;
+      margin-left: -0.5em;
+      /* same as padding-left set on li */
+      width: 1.3em;
+      /* same as padding-left set on li */
+    }
+
+    .correct-answer {
+      content: "\f012";
+      /* FontAwesome Unicode */
+      font-family: FontAwesome;
+      display: inline-block;
+      margin-left: -1.3em;
+      /* same as padding-left set on li */
+      width: 1.3em;
+      /* same as padding-left set on li */
+    }
+
+    #foo {
+      position: fixed;
+      text-align: center;
+      font-size: 55px;
+      text-decoration: underline;
+      top: 5px;
+    }
+
+    .choices {
+      width: 100%;
+    }
+
+    #answer {
+      position: fixed;
+      bottom: 110px;
+      font-size: 25px;
+      font-style: italic;
+    }
+
+    body {
+      font-family: 'Open Sans', sans-serif;
+    }
+
+    .key {
+      border: 2px solid white;
+      padding: 7px;
+    }
+
+    /* Style the button used to pause/play the video */
+
+    #myBtn {
+      width: 200px;
+      font-size: 18px;
+      padding: 10px;
+      border: none;
+      background: #000;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    #myBtn:hover {
+      background: #ddd;
+      color: black;
+    }
+
+    .blur {
+      filter: blur(3px) grayscale(100%);
+    }
+  </style>
+</body>
+
+</html>
